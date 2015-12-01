@@ -37,12 +37,14 @@ void PointCloudCallback(PointCloud::ConstPtr pointCloud)
     pointCloudDirty = false;
 }
 
+
+
 bool ExtractClustersService(ExtractClusters::Request& request, ExtractClusters::Response& response)
 {
     std::string topic = request.point_cloud_topic;
     pointCloudDirty = true;
     ros::Subscriber sub = nodeHandle->subscribe(topic, 1, &PointCloudCallback);
-    ros::Duration timeout(15);
+    ros::Duration timeout(5);
     ros::Time begin = ros::Time::now();
     ROS_INFO("Waiting for point cloud %s", topic.c_str());
     while (pointCloudDirty)
@@ -283,16 +285,49 @@ bool DetectPlaneService(DetectPlane::Request& request, DetectPlane::Response& re
     ROS_INFO("Got point cloud. Extracting");
     PointCloud::Ptr pointCloud(new PointCloud(*lastPointCloud));
     std::vector<float> plane_params;
+    pcl_helpers::Vec4 centroid;
 
     //Try to detect plane
-    bool plane_detected = pcl_helpers::DetectPlane<Point>(pointCloud,plane_params);
+    bool plane_detected = pcl_helpers::DetectPlane<Point>(pointCloud,plane_params,centroid);
 
     if(plane_detected)
     {
+
         response.a = plane_params[0];
         response.b = plane_params[1];
         response.c = plane_params[2];
         response.d = plane_params[3];
+        
+        //Set translation
+        response.pose.position.x = centroid[0];
+        response.pose.position.y = centroid[1];
+        response.pose.position.z = centroid[2];
+
+        //Set orientation
+        Eigen::Vector3d normal(plane_params[0], plane_params[1], plane_params[2]);
+        normal = normal / sqrt(normal.dot(normal));
+
+        
+        Eigen::Vector3d unit_std(0, 0, 1);
+        Eigen::Quaterniond R_q;
+        R_q.setFromTwoVectors(unit_std, normal);
+        
+        /*
+        pcl_helpers::Vec3 cam_z(0,0,-1);
+        pcl_helpers::Vec3 table_x(cam_z.cross(normal));
+        pcl_helpers::Vec3 table_y(normal.cross(table_x));
+        pcl_helpers::Mat4x4 table_pose;
+        table_pose << table_x,table_y,normal,Eigen::ArrayXf::Zero(3,1),
+                      0, 0, 0, 1;
+
+        pcl_helpers::Quaternion R_q(table_pose);
+        */
+
+        response.pose.orientation.x = R_q.x();
+        response.pose.orientation.y = R_q.y();
+        response.pose.orientation.z = R_q.z();     
+        response.pose.orientation.w = R_q.w();
+
         response.ok = true;
 
         ROS_INFO_STREAM("Found plane! Coefficients: ["<<response.a<<" "<<response.b<<" "<<response.c<<" "<<response.d<<"]");
@@ -302,6 +337,13 @@ bool DetectPlaneService(DetectPlane::Request& request, DetectPlane::Response& re
         response.ok = false;
         ROS_INFO("Did not find plane!");
     }
+
+    
+
+    ROS_INFO("Shutting down...");
+    sub.shutdown();
+
+    ROS_INFO("Done.");
 
     return true;
 }

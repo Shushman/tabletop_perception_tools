@@ -58,5 +58,21 @@ def find_blocks(service_name="tools_server/find_blocks",
         print "Service call failed: %s"%e
 
 
+def find_table_plane(service_name = "tools_server/detect_planes",
+                        cloud_topic="/head/kinect2/qhd/points"):
+    #Assumes single major table plane
+
+    print "waiting for service..."
+    rospy.wait_for_service(service_name);
+    print "Calling service..."
+    try:
+        service = rospy.ServiceProxy(service_name, DetectPlane);
+        response = service(cloud_topic);
+        return response
+    except rospy.ServiceException, e:
+        print "Service call failed: %s"%e
+
+
+
 if __name__ == "__main__":
     print find_blocks();

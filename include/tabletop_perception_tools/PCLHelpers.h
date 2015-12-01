@@ -1,6 +1,7 @@
 #ifndef PCLHELPERS_H_
 #define PCLHELPERS_H_
 
+#include <iostream>
 #include <ros/ros.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/point_types.h>
@@ -104,8 +105,10 @@ namespace pcl_helpers
     }
 
     template <typename PointT> bool DetectPlane(const typename pcl::PointCloud<PointT>::Ptr& points, std::vector<float>& plane_params,
-             float distanceThreshold = 0.015f, int methodType = pcl::SAC_RANSAC, int modelType = pcl::SACMODEL_PLANE)
+             Vec4& centroid, float distanceThreshold = 0.0005f, int methodType = pcl::SAC_RANSAC, int modelType = pcl::SACMODEL_PLANE)
     {
+
+        //Return plane normal and plane pose
         pcl::SACSegmentation<PointT> seg;
         pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
         pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -117,25 +120,55 @@ namespace pcl_helpers
         seg.setDistanceThreshold(distanceThreshold);
 
         typename pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>(*points));
+
         std::vector<int> nanIndex;
         pcl::removeNaNFromPointCloud(*cloud_filtered,*cloud_filtered, nanIndex);
         size_t nr_points = cloud_filtered->points.size();
 
-        //Get largest plane component params
-        inliers->indices.clear();
-        seg.setInputCloud(cloud_filtered);
-        seg.segment(*inliers, *coefficients);
 
-        if (inliers->indices.size() == 0)
-        {
-            //No inliers -> plane not detected
-            return false;
+        while(true){
+            //Get largest plane component params
+            inliers->indices.clear();
+            seg.setInputCloud(cloud_filtered);
+            seg.segment(*inliers, *coefficients);
+
+            
+
+            if (inliers->indices.size() == 0)
+            {
+                //No inliers -> plane not detected
+                return false;
+            }
+            else
+            {
+                typename pcl::PointCloud<PointT>::Ptr inlier_pts(new pcl::PointCloud<PointT>(*cloud_filtered,inliers->indices));
+                pcl::compute3DCentroid(*inlier_pts,centroid);
+                ROS_INFO_STREAM(inliers->indices.size()<<" inliers, "<<" centroid - "<<centroid[0]<<","<<centroid[1]<<","<<centroid[2]);
+                
+                /*
+                for (size_t i = 0; i < inliers->indices.size (); ++i){
+                    std::cerr << inliers->indices[i] << "    " << cloud_filtered->points[inliers->indices[i]].x << " "
+                                               << cloud_filtered->points[inliers->indices[i]].y << " "
+                                               << cloud_filtered->points[inliers->indices[i]].z << std::endl;
+                }*/
+
+                if(centroid[2] > 2.0){
+                    pcl::ExtractIndices<PointT> extract;
+                    extract.setInputCloud(cloud_filtered);
+                    extract.setIndices(inliers);
+                    extract.setNegative(true);
+                    extract.filter(*cloud_filtered);
+                }
+                else{
+                    
+                    plane_params = coefficients->values;
+                    return true;
+                }
+                
+            }
         }
-        else
-        {
-            plane_params = coefficients->values;
-            return true;
-        }
+
+        return false;
 
 
     }   
