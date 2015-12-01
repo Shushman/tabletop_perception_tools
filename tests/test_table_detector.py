@@ -66,10 +66,10 @@ frame_offset[2,3] = frame_trans[2]
 
 plane_in_world = numpy.array(numpy.dot(frame_offset,plane_pose))
 
-
+#Add pi/2 to az
 curr_rot = plane_in_world[0:3,0:3]
 ax,ay,az = euler_from_matrix(curr_rot)
-curr_rot = euler_matrix(0,0,az+numpy.pi/2)
+curr_rot = euler_matrix(ax,ay,az+numpy.pi/2)
 plane_in_world[0:3,0:3] = curr_rot[0:3,0:3]
 
 
